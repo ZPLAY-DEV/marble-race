@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MARBLE RACE</title>
+    <link rel="stylesheet" href="/src/ui/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas"></canvas>
+
+      <!-- Boot / loading veil. Removed once Ammo and the scene are ready. -->
+      <div id="boot" class="boot">
+        <div class="boot__logo">MARBLE&nbsp;RACE</div>
+        <div class="boot__bar"><span></span></div>
+        <div class="boot__status">LOADING PHYSICS…</div>
+      </div>
+
+      <header class="hud hud--top">
+        <h1 class="title" id="title" role="button" tabindex="0" title="클릭하면 제목이 바뀝니다">MARBLE RACE</h1>
+        <div class="seed" id="seed-readout" title="Race seed — same seed, same race">
+          SEED <b>—</b>
+        </div>
+      </header>
+
+      <aside class="leaderboard" id="leaderboard" hidden>
+        <div class="leaderboard__head">LIVE</div>
+        <ol class="leaderboard__list" id="leaderboard-list"></ol>
+      </aside>
+
+      <aside class="roster" id="roster">
+        <div class="roster__head">
+          <span>참가자</span>
+          <button id="roster-toggle" class="roster__all" type="button">전체 해제</button>
+        </div>
+        <div class="roster__list" id="roster-list"></div>
+        <div class="roster__foot">
+          <span class="roster__count" id="roster-count"></span>
+          <button id="roster-shuffle" class="roster__all" type="button" title="참가자 순서를 무작위로 섞습니다">
+            순서 랜덤
+          </button>
+        </div>
+      </aside>
+
+      <div class="countdown" id="countdown" hidden><span></span></div>
+
+      <div class="marker-layer" id="marker-layer"></div>
+
+      <footer class="hud hud--bottom">
+        <div class="players" id="player-readout">13 PLAYERS</div>
+        <div class="controls">
+          <label class="field">
+            <span>SEED</span>
+            <input id="seed-input" type="text" inputmode="numeric" placeholder="random" />
+          </label>
+          <button id="view-button" class="button button--ghost" type="button" aria-pressed="false">
+            FULL BOARD
+          </button>
+          <button id="sound-button" class="button button--ghost" type="button" aria-pressed="true">
+            SOUND ON
+          </button>
+          <button id="start-button" class="button button--primary" type="button">START RACE</button>
+          <button id="reset-button" class="button" type="button">RESET</button>
+        </div>
+      </footer>
+
+      <section class="result" id="result" hidden>
+        <div class="result__panel">
+          <h2 class="result__title">RESULT</h2>
+          <ol class="result__list" id="result-list"></ol>
+          <div class="result__meta" id="result-meta"></div>
+          <div class="result__actions">
+            <button id="result-share" class="button button--ghost" type="button">COPY LINK</button>
+            <button id="result-again" class="button button--primary" type="button">RACE AGAIN</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="debug" id="debug" hidden></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

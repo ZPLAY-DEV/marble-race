@@ -1,0 +1,714 @@
+/*
+ * Neon-arcade HUD (PRD §15, §20).
+ *
+ * All UI is HTML/CSS layered over the canvas — nothing is drawn into the 3D
+ * scene. Type is a system stack so the game ships with no external assets.
+ */
+
+:root {
+  --bg: #070912;
+  --bg-2: #10152c;
+  --panel: rgba(14, 19, 42, 0.82);
+  --panel-line: rgba(120, 150, 255, 0.22);
+  --ink: #eaf0ff;
+  --ink-dim: #8a97c4;
+  --accent: #00e5ff;
+  --accent-2: #ff2e88;
+  --gold: #ffd23f;
+  --silver: #cfd8ea;
+  --bronze: #ff9d5c;
+  --hud-pad: clamp(12px, 2.2vw, 26px);
+  --font: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Helvetica Neue', Arial, sans-serif;
+  --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+#game-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* A radial wash behind the transparent-cleared canvas gives the scene depth
+     without costing a single draw call. */
+  background:
+    radial-gradient(120% 80% at 50% 0%, #1b2350 0%, transparent 60%),
+    radial-gradient(90% 60% at 50% 100%, #1a1038 0%, transparent 55%), var(--bg);
+}
+
+/* ---------------------------------------------------------------- boot veil */
+
+.boot {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 18px;
+  justify-items: center;
+  background: var(--bg);
+  z-index: 40;
+  transition: opacity 0.45s ease;
+}
+
+.boot--gone {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot__logo {
+  font-size: clamp(28px, 6vw, 62px);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  background: linear-gradient(96deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.boot__bar {
+  width: min(320px, 60vw);
+  height: 3px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.boot__bar span {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  animation: boot-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes boot-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.boot__status {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--ink-dim);
+}
+
+/* --------------------------------------------------------------------- HUD */
+
+.hud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: var(--hud-pad);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.hud--top {
+  top: 0;
+  background: linear-gradient(180deg, rgba(7, 9, 18, 0.9), transparent);
+}
+
+.hud--bottom {
+  bottom: 0;
+  flex-wrap: wrap;
+  background: linear-gradient(0deg, rgba(7, 9, 18, 0.92), transparent);
+}
+
+.title {
+  margin: 0;
+  /* The HUD bar ignores pointer events; the title opts back in so it can be
+     clicked to toggle. */
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s ease;
+}
+
+.title:hover {
+  opacity: 0.75;
+}
+
+.title {
+  font-size: clamp(16px, 2.4vw, 26px);
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  background: linear-gradient(96deg, #ffffff, var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.seed {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--ink-dim);
+  pointer-events: auto;
+  user-select: all;
+}
+
+.seed b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.players {
+  font-family: var(--mono);
+  font-size: clamp(12px, 1.6vw, 15px);
+  letter-spacing: 0.2em;
+  color: var(--ink-dim);
+}
+
+.controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  pointer-events: auto;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+}
+
+.field span {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--ink-dim);
+}
+
+.field input {
+  width: 92px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--panel-line);
+  background: rgba(10, 14, 32, 0.8);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  outline: none;
+}
+
+.field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.15);
+}
+
+.button {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-line);
+  background: rgba(18, 24, 52, 0.85);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.button:hover {
+  transform: translateY(-1px);
+  background: rgba(30, 40, 82, 0.9);
+}
+
+.button:active {
+  transform: translateY(0);
+}
+
+.button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.button--primary {
+  border-color: transparent;
+  background: linear-gradient(96deg, var(--accent), #4d7cff);
+  color: #04101c;
+  box-shadow: 0 6px 22px rgba(0, 229, 255, 0.25);
+}
+
+.button--primary:hover {
+  background: linear-gradient(96deg, #6ff2ff, #6a90ff);
+}
+
+.button--ghost {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------- leaderboard */
+
+.leaderboard {
+  position: absolute;
+  top: calc(var(--hud-pad) + 52px);
+  right: var(--hud-pad);
+  width: 178px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--panel-line);
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  z-index: 22;
+  pointer-events: none;
+}
+
+.leaderboard__head {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.26em;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.leaderboard__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 5px;
+}
+
+.leaderboard__list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-dim);
+  /* Rows reorder constantly; the transition keeps that legible. */
+  transition: color 0.2s ease;
+}
+
+.leaderboard__list li.is-leader {
+  color: var(--ink);
+}
+
+.leaderboard__list li.is-done {
+  color: var(--gold);
+}
+
+.leaderboard__rank {
+  width: 16px;
+  text-align: right;
+  opacity: 0.65;
+}
+
+.leaderboard__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* ------------------------------------------------------------------ roster */
+
+.roster {
+  position: absolute;
+  top: calc(var(--hud-pad) + 52px);
+  left: var(--hud-pad);
+  width: 210px;
+  max-height: min(62dvh, 560px);
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--panel-line);
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  z-index: 24;
+}
+
+.roster[hidden] {
+  display: none;
+}
+
+.roster__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+}
+
+.roster__all {
+  border: 1px solid var(--panel-line);
+  background: transparent;
+  color: var(--ink-dim);
+  border-radius: 7px;
+  padding: 3px 7px;
+  font-size: 9px;
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.roster__all:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.roster__list {
+  display: grid;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.roster__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 7px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--ink-dim);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.roster__item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Unchecked entrants stay legible but clearly out of the race. */
+.roster__item:has(input:checked) {
+  color: var(--ink);
+}
+
+.roster__item input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  flex: none;
+  cursor: pointer;
+}
+
+.roster__swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.roster__item:not(:has(input:checked)) .roster__swatch {
+  opacity: 0.25;
+  box-shadow: none;
+}
+
+.roster__foot {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--panel-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.roster__count {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+}
+
+/* ----------------------------------------------------------------- markers */
+
+.marker-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+  overflow: hidden;
+}
+
+.marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  /* Names, not numbers — so the system stack rather than mono, which handles
+     Korean far better. */
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 3px 6px;
+  border-radius: 7px;
+  color: #050914;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  will-change: transform;
+}
+
+/* --------------------------------------------------------------- countdown */
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.countdown span {
+  font-size: clamp(80px, 18vw, 200px);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #fff;
+  text-shadow:
+    0 0 30px rgba(0, 229, 255, 0.75),
+    0 0 90px rgba(255, 46, 136, 0.5);
+  animation: countdown-pop 0.85s cubic-bezier(0.2, 1.2, 0.3, 1) forwards;
+}
+
+.countdown--go span {
+  background: linear-gradient(96deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0 34px rgba(0, 229, 255, 0.6));
+}
+
+@keyframes countdown-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  25% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  70% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ result */
+
+.result {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  z-index: 35;
+  background: rgba(5, 7, 16, 0.62);
+  backdrop-filter: blur(8px);
+  animation: fade-in 0.4s ease;
+  /* The scrim must not swallow clicks: the roster stays editable underneath so
+     the line-up can be changed before racing again. */
+  pointer-events: none;
+}
+
+.result__panel,
+.result button {
+  pointer-events: auto;
+}
+
+.result[hidden] {
+  display: none;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.result__panel {
+  width: min(460px, 92vw);
+  max-height: 86dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 26px;
+  border-radius: 20px;
+  border: 1px solid var(--panel-line);
+  background: linear-gradient(180deg, rgba(18, 24, 52, 0.96), rgba(10, 13, 30, 0.96));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.6);
+}
+
+.result__title {
+  margin: 0 0 18px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  color: var(--accent);
+  font-family: var(--mono);
+}
+
+.result__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.result__list li {
+  display: grid;
+  grid-template-columns: 34px 14px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 14px;
+  /* Rows are revealed one at a time by ResultUI (PRD §14 rank reveal). */
+  opacity: 0;
+  transform: translateY(6px);
+  animation: row-in 0.35s ease forwards;
+}
+
+@keyframes row-in {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.result__list li.rank-1 {
+  background: linear-gradient(90deg, rgba(255, 210, 63, 0.18), rgba(255, 210, 63, 0.03));
+  box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.3);
+}
+
+.result__list li.rank-2 {
+  background: linear-gradient(90deg, rgba(207, 216, 234, 0.14), transparent);
+}
+
+.result__list li.rank-3 {
+  background: linear-gradient(90deg, rgba(255, 157, 92, 0.14), transparent);
+}
+
+.result__medal {
+  font-size: 17px;
+  text-align: center;
+  font-family: var(--mono);
+  color: var(--ink-dim);
+}
+
+.result__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.result__name {
+  font-family: var(--mono);
+  letter-spacing: 0.1em;
+  font-size: 13px;
+}
+
+.result__time {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+.result__meta {
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+  word-break: break-all;
+}
+
+.result__actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* ------------------------------------------------------------------- debug */
+
+.debug {
+  position: absolute;
+  left: var(--hud-pad);
+  top: calc(var(--hud-pad) + 52px);
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-line);
+  background: var(--panel);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+  white-space: pre;
+  z-index: 22;
+  pointer-events: none;
+}
+
+/* Small screens: the control bar matters more than the leaderboard. */
+@media (max-width: 900px) {
+  .leaderboard {
+    display: none;
+  }
+
+  .roster {
+    width: 168px;
+    max-height: 46dvh;
+  }
+
+  .field input {
+    width: 74px;
+  }
+}
