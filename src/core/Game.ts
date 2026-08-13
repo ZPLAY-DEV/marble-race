@@ -318,6 +318,9 @@ export class Game {
     this.track.update(dt);
     this.marbles.update(dt, this.track, racing);
     this.physics.step();
+    // Contact callbacks (bumper kicks, launches) fire inside the step above and
+    // can leave a marble over the speed cap; clamp before it travels again.
+    this.marbles.clampAll();
     this.race.tick(dt);
   }
 

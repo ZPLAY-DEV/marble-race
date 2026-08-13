@@ -58,8 +58,30 @@ const MIN_LAUNCHER_GAP = 2.2;
 /** Fraction of a row slot a pad may occupy, before the gap rule is applied. */
 const LAUNCHER_PAD_RATIO = 0.3;
 
-/** The melting barrier across the middle of the board. */
+/**
+ * Pegs per bumper row, and how big each may be.
+ *
+ * Eight across an 18-wide board leaves roughly 0.9 between neighbouring peg
+ * edges once the drain lanes are reserved — wider than a marble (0.84), so the
+ * row is a dense peg field rather than a wall. The radius ceiling is what keeps
+ * that true: larger pegs at this count would close the gaps entirely.
+ */
+const BUMPERS_PER_ROW = 8;
+/**
+ * Smaller pegs than a sparse row would use, because eight of them share the
+ * same span. At 0.52 the gaps came out at 0.9 against a 0.84 marble — passable
+ * on paper, a wall in practice, and three seeds in six ran to the timeout.
+ * This leaves about 1.2, half again a marble's width.
+ */
+const BUMPER_RADIUS = { min: 0.32, max: 0.42 } as const;
+
+/** The melting barriers across the board. */
 const MELT_BALL = {
+  /**
+   * Where the barriers sit, as a fraction of the run from the first obstacle
+   * row to the finish. Two of them, so the field is dammed twice.
+   */
+  at: [0.42, 0.62] as const,
   radius: 0.62,
   /** Clearance between neighbours — far narrower than a marble, by design. */
   gap: 0.16,
@@ -160,32 +182,36 @@ function buildEdgeLaunchers(random: RandomStream, config: TrackConfig): TrackRow
  * until something dissolves.
  */
 function buildMeltWall(random: RandomStream, config: TrackConfig): TrackRow[] {
-  const centreY = (config.firstRowY + config.finishY) / 2;
+  const run = config.firstRowY - config.finishY;
   const radius = MELT_BALL.radius;
   const pitch = radius * 2 + MELT_BALL.gap;
   const perRow = Math.floor(config.width / pitch);
   const rows: TrackRow[] = [];
 
-  for (let line = 0; line < MELT_BALL.rows; line++) {
-    const y = centreY - line * MELT_BALL.rowSpacing;
-    // Offset alternate rows by half a pitch so the two interlock.
-    const offset = line % 2 === 0 ? 0 : pitch / 2;
-    const span = perRow * pitch;
-    const startX = -span / 2 + pitch / 2 + offset;
+  for (const fraction of MELT_BALL.at) {
+    const centreY = config.firstRowY - run * fraction;
 
-    const balls: ObstacleSpec[] = [];
-    for (let i = 0; i < perRow; i++) {
-      const x = startX + i * pitch;
-      if (Math.abs(x) + radius > config.width / 2) continue;
-      balls.push({
-        kind: 'meltBall',
-        x,
-        y: y + random.spread(0.12),
-        radius,
-        meltSeconds: MELT_BALL.meltSeconds,
-      });
+    for (let line = 0; line < MELT_BALL.rows; line++) {
+      const y = centreY - line * MELT_BALL.rowSpacing;
+      // Offset alternate rows by half a pitch so the two interlock.
+      const offset = line % 2 === 0 ? 0 : pitch / 2;
+      const span = perRow * pitch;
+      const startX = -span / 2 + pitch / 2 + offset;
+
+      const balls: ObstacleSpec[] = [];
+      for (let i = 0; i < perRow; i++) {
+        const x = startX + i * pitch;
+        if (Math.abs(x) + radius > config.width / 2) continue;
+        balls.push({
+          kind: 'meltBall',
+          x,
+          y: y + random.spread(0.12),
+          radius,
+          meltSeconds: MELT_BALL.meltSeconds,
+        });
+      }
+      if (balls.length) rows.push({ y, obstacles: balls });
     }
-    if (balls.length) rows.push({ y, obstacles: balls });
   }
 
   return rows;
@@ -414,23 +440,24 @@ function buildBumperRow(
   config: TrackConfig,
   y: number,
 ): ObstacleSpec[] {
-  const count = Math.round(config.width / random.range(2.6, 3.6));
-  const step = config.width / count;
-  const offset = random.chance(0.5) ? step * 0.5 : 0;
-  const bumpers: ObstacleSpec[] = [];
+  // Span is measured inside the drain lanes, so a full row never closes the
+  // edge routes that keep marbles from dead-ending against a wall.
+  const safeHalf = config.width / 2 - config.minDrainGap - BUMPER_RADIUS.max;
+  const pitch = (safeHalf * 2) / (BUMPERS_PER_ROW - 1);
 
-  for (let i = 0; i < count; i++) {
-    const x = -config.width / 2 + step * (i + 0.5) + offset;
-    const radius = random.range(0.42, 0.62);
-    // Drop pegs that would leave less than a full drain gap to the wall. Half a
-    // gap is narrower than a marble, so the peg becomes a wedge against the wall
-    // rather than an obstacle to bounce off.
-    if (Math.abs(x) + radius > config.width / 2 - config.minDrainGap) continue;
+  // Rows alternate a small stagger so a marble falling straight down always
+  // meets a peg rather than dropping cleanly between two, as on a real board.
+  const stagger = pitch * 0.22 * (random.chance(0.5) ? 1 : -1);
+  const half = safeHalf - Math.abs(stagger);
+  const spacing = (half * 2) / (BUMPERS_PER_ROW - 1);
+
+  const bumpers: ObstacleSpec[] = [];
+  for (let i = 0; i < BUMPERS_PER_ROW; i++) {
     bumpers.push({
       kind: 'bumper',
-      x,
-      y: y + random.spread(0.35),
-      radius,
+      x: -half + i * spacing + stagger,
+      y: y + random.spread(0.3),
+      radius: random.range(BUMPER_RADIUS.min, BUMPER_RADIUS.max),
     });
   }
   return bumpers;

@@ -175,6 +175,21 @@ export class MarbleManager implements ProgressSource {
   /** Fraction of upward speed removed per step inside the hopper. */
   private static readonly HOPPER_BRAKE = 0.12;
 
+  /**
+   * Re-clamps every marble's speed.
+   *
+   * Must run *after* the physics step, not just before it. Bumper and launcher
+   * impulses are applied from contact callbacks, which fire at the end of the
+   * step — so a marble can finish a step well above `maxSpeed` (a fully charged
+   * bumper kick alone equals the whole cap). Left unclamped until the next
+   * frame's pre-step pass, it would advance further in one step than the
+   * thinnest collider is thick and tunnel straight into the geometry, ending up
+   * wedged inside an obstacle where no rescue impulse can reach it.
+   */
+  clampAll(): void {
+    for (const marble of this.marbles) marble.clampSpeed();
+  }
+
   /** Unfinished marbles, furthest down the board first (PRD §26 timeout rule). */
   rankUnfinishedByProgress(): MarbleId[] {
     return this.marbles

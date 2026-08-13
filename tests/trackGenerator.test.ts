@@ -178,6 +178,50 @@ describe('generateTrack', () => {
     ]);
   });
 
+  describe('bumper rows', () => {
+    it('places eight pegs in every row', () => {
+      for (let seed = 0; seed < 40; seed++) {
+        for (const row of build(seed).rows) {
+          const pegs = row.obstacles.filter((o) => o.kind === 'bumper');
+          if (pegs.length === 0) continue;
+          expect(pegs).toHaveLength(8);
+        }
+      }
+    });
+
+    it('still leaves a marble-sized gap between neighbouring pegs', () => {
+      // Eight pegs is dense by design, but a row a marble cannot pass is a
+      // wall, not a peg field — and unlike the melt balls these never vanish.
+      const diameter = 0.84;
+      for (let seed = 0; seed < 40; seed++) {
+        for (const row of build(seed).rows) {
+          const pegs = row.obstacles
+            .filter((o) => o.kind === 'bumper')
+            .sort((a, b) => a.x - b.x);
+
+          for (let i = 1; i < pegs.length; i++) {
+            const a = pegs[i - 1];
+            const b = pegs[i];
+            if (a.kind !== 'bumper' || b.kind !== 'bumper') continue;
+            // Comfortably clear, not marginally: a gap barely wider than a
+            // marble reads as a wall once the field is moving.
+            expect((b.x - b.radius) - (a.x + a.radius)).toBeGreaterThan(diameter * 1.35);
+          }
+        }
+      }
+    });
+
+    it('keeps the outermost pegs inside the drain lanes', () => {
+      const limit = DEFAULT_TRACK_CONFIG.width / 2 - DEFAULT_TRACK_CONFIG.minDrainGap;
+      for (let seed = 0; seed < 40; seed++) {
+        for (const obstacle of allObstacles(build(seed))) {
+          if (obstacle.kind !== 'bumper') continue;
+          expect(Math.abs(obstacle.x) + obstacle.radius).toBeLessThanOrEqual(limit + 1e-6);
+        }
+      }
+    });
+  });
+
   describe('melt balls', () => {
     it('packs two rows tighter than a marble can pass', () => {
       // The whole point: an impassable barrier. Safe only because they melt.
@@ -186,7 +230,8 @@ describe('generateTrack', () => {
         const rows = build(seed).rows.filter((row) =>
           row.obstacles.some((o) => o.kind === 'meltBall'),
         );
-        expect(rows).toHaveLength(2);
+        // Two barriers, two rows each.
+        expect(rows).toHaveLength(4);
 
         for (const row of rows) {
           const balls = [...row.obstacles].sort((a, b) => a.x - b.x);
@@ -200,7 +245,7 @@ describe('generateTrack', () => {
       }
     });
 
-    it('offsets the two rows so there is no straight path through', () => {
+    it('offsets each pair of rows so there is no straight path through', () => {
       const rows = build(3).rows.filter((row) =>
         row.obstacles.some((o) => o.kind === 'meltBall'),
       );
@@ -213,12 +258,16 @@ describe('generateTrack', () => {
       }
     });
 
-    it('sits in the middle of the board, well clear of both ends', () => {
+    it('places both barriers in the body of the board, clear of both ends', () => {
       const { firstRowY, finishY } = DEFAULT_TRACK_CONFIG;
+      const run = firstRowY - finishY;
       const balls = allObstacles(build(11)).filter((o) => o.kind === 'meltBall');
-      const midY = (firstRowY + finishY) / 2;
+      expect(balls.length).toBeGreaterThan(20);
+
       for (const ball of balls) {
-        expect(Math.abs(ball.y - midY)).toBeLessThan(6);
+        const fraction = (firstRowY - ball.y) / run;
+        expect(fraction).toBeGreaterThan(0.3);
+        expect(fraction).toBeLessThan(0.75);
       }
     });
 
