@@ -27,6 +27,8 @@ const ROW_WEIGHTS: Record<ObstacleKind, number> = {
   // Never drawn from the random pool: melt balls are placed as a deliberate
   // barrier across the middle of the board, not scattered as a row type.
   meltBall: 0,
+  // Likewise the wordmark, which occupies fixed row slots at the top.
+  logoBar: 0,
 };
 
 const KINDS = Object.keys(ROW_WEIGHTS) as ObstacleKind[];
@@ -72,8 +74,14 @@ const BUMPERS_PER_ROW = 8;
  * same span. At 0.52 the gaps came out at 0.9 against a 0.84 marble — passable
  * on paper, a wall in practice, and three seeds in six ran to the timeout.
  * This leaves about 1.2, half again a marble's width.
+ *
+ * The ceiling is what the row spacing can actually carry, not a taste call: the
+ * eight pegs sit 1.95 apart, so two neighbours both drawing the maximum leave
+ * `1.95 - 2*max` between them. At 0.42 that worst case came out at 1.11, under
+ * the marble-and-a-third the row is held to — it simply never came up until the
+ * random stream shifted underneath it. 0.39 leaves 1.17 whatever is drawn.
  */
-const BUMPER_RADIUS = { min: 0.32, max: 0.42 } as const;
+const BUMPER_RADIUS = { min: 0.32, max: 0.39 } as const;
 
 /** The melting barriers across the board. */
 const MELT_BALL = {
@@ -89,6 +97,86 @@ const MELT_BALL = {
   rowSpacing: 1.5,
   meltSeconds: 2,
 } as const;
+
+/**
+ * The ZPLAY wordmark standing in the first two row slots.
+ *
+ * Every number here is load-bearing, because the letters are a barrier the
+ * whole field arrives at simultaneously:
+ *
+ * - `tilt` rotates the entire wordmark clockwise, which is what keeps the
+ *   horizontal strokes off level. Shearing it into an italic would not have
+ *   worked — a shear leaves horizontal strokes horizontal, and a level face on
+ *   an inclined board holds a marble permanently (see LEDGE_TILT in Walls.ts).
+ *   Rotating clockwise also decides *which way* marbles drain off those
+ *   strokes: every one of them now runs downhill to the right, away from the
+ *   corner it meets its neighbouring stroke in.
+ * - `letterWidth` against `thickness` is what makes the closed counters safe.
+ *   Two strokes at opposite edges of a letter leave `letterWidth - 2*thickness`
+ *   = 0.56 between them, well under a marble's 0.84 diameter, so the bowl of
+ *   the P, the triangle of the A and the fork of the Y are sealed rather than
+ *   inescapable. Widening a letter or thinning a stroke reopens them.
+ * - `gap` is the clear space between neighbouring letters, and is the route
+ *   down the middle of the board. Held above 1.35 marble diameters, the same
+ *   bar the bumper rows are held to: a gap barely wider than a marble reads as
+ *   a wall once the field is moving.
+ */
+const LOGO = {
+  word: 'ZPLAY',
+  /** Row slots the wordmark occupies, counted from `firstRowY`. */
+  rowSlots: 2,
+  /** Outer size of one letter, strokes included. */
+  letterWidth: 1.8,
+  letterHeight: 4.4,
+  /**
+   * Clear space between neighbouring letters.
+   *
+   * Wider than the 1.13 the gap rule asks for, because strokes overshoot their
+   * letter box: each bar is lengthened by a thickness so its joints read as
+   * solid corners, and half of that hangs past a free end. The Z's diagonal
+   * pokes furthest, and eats about 0.07 of the channel beside it.
+   */
+  gap: 1.32,
+  /** Must clear MIN_COLLIDER_THICKNESS or a fast marble tunnels straight through. */
+  thickness: 0.62,
+  /** Clockwise tilt of the whole wordmark, in degrees. */
+  tilt: 14,
+} as const;
+
+/**
+ * Letter strokes, as endpoint pairs `[x1, y1, x2, y2]` on the stroke centre
+ * lines, in a -1..1 box per letter. Scaled and tilted by `buildLogoRow`.
+ *
+ * The P's bowl stops at x = 0.55 and the Y's fork spreads only to its box
+ * edges for the counter reason above; drawn any wider they become pockets.
+ */
+const LOGO_GLYPHS: Record<string, readonly (readonly [number, number, number, number])[]> = {
+  Z: [
+    [-1, 1, 1, 1],
+    [1, 1, -1, -1],
+    [-1, -1, 1, -1],
+  ],
+  P: [
+    [-1, -1, -1, 1],
+    [-1, 1, 0.55, 1],
+    [0.55, 1, 0.55, 0.1],
+    [0.55, 0.1, -1, 0.1],
+  ],
+  L: [
+    [-0.75, 1, -0.75, -1],
+    [-0.75, -1, 1, -1],
+  ],
+  A: [
+    [-1, -1, 0, 1],
+    [0, 1, 1, -1],
+    [-0.6, -0.15, 0.6, -0.15],
+  ],
+  Y: [
+    [-1, 1, 0, 0.05],
+    [1, 1, 0, 0.05],
+    [0, 0.05, 0, -1],
+  ],
+};
 
 /**
  * Kinds that constrict the track. Two in a row makes marbles pile up and the
@@ -108,12 +196,15 @@ export function generateTrack(
   for (let index = 0; index < total; index++) {
     const y = config.firstRowY - index * config.rowSpacing;
 
-    // The first two rows are always bumper fields: marbles need to be spread
-    // out of their starting grid before anything more structured is fair.
+    // The opening row slots hold the ZPLAY wordmark instead of obstacles. It
+    // does the same job the bumper fields it replaced did — the pack has to be
+    // broken out of its starting grid before anything more structured is fair —
+    // while giving the top of the board an identity.
+    if (index < LOGO.rowSlots) continue;
+
     // Launchers are excluded from the run-in above the finish, so a race can
     // always resolve (see `launcherFreeRunIn`).
-    const kind: ObstacleKind =
-      index < 2 ? 'bumper' : pickKind(random, previousKind, allowsLauncher(config, y));
+    const kind: ObstacleKind = pickKind(random, previousKind, allowsLauncher(config, y));
     rows.push({ y, obstacles: buildRow(random, config, kind, y) });
     previousKind = kind;
   }
@@ -123,6 +214,7 @@ export function generateTrack(
   const finalY = config.finishY + config.finishHeight + config.rowSpacing;
   rows.push({ y: finalY, obstacles: buildRow(random, config, 'bumper', finalY) });
 
+  rows.push(buildLogoRow(config));
   rows.push(...buildEdgeLaunchers(random, config));
   rows.push(...buildMeltWall(random, config));
   rows.sort((a, b) => b.y - a.y);
@@ -215,6 +307,62 @@ function buildMeltWall(random: RandomStream, config: TrackConfig): TrackRow[] {
   }
 
   return rows;
+}
+
+/**
+ * Lays the ZPLAY wordmark out as bars, in the row slots below the start gate.
+ *
+ * Takes no random stream on purpose: the branding is the one thing on the board
+ * that must look identical in every race.
+ *
+ * Each glyph stroke becomes one bar, lengthened by a stroke thickness so butt
+ * joints overlap into solid corners, and then the whole wordmark is rotated
+ * clockwise about its own centre — see LOGO.tilt for why the tilt is the part
+ * that keeps marbles moving.
+ */
+function buildLogoRow(config: TrackConfig): TrackRow {
+  const letters = [...LOGO.word];
+  const pitch = LOGO.letterWidth + LOGO.gap;
+  // Half-extents of a letter measured on the stroke centre lines.
+  const halfWidth = (LOGO.letterWidth - LOGO.thickness) / 2;
+  const halfHeight = (LOGO.letterHeight - LOGO.thickness) / 2;
+  const halfSpan = ((letters.length - 1) * pitch) / 2;
+
+  const tilt = (LOGO.tilt * Math.PI) / 180;
+  const cos = Math.cos(tilt);
+  const sin = Math.sin(tilt);
+
+  // Hang the wordmark from the first row line rather than picking a height by
+  // hand: tilting it makes it taller than the letters are, and the top corner
+  // must still clear the start gate's drop.
+  const halfExtentY =
+    (halfSpan + halfWidth) * sin + halfHeight * cos + LOGO.thickness / 2;
+  const centreY = config.firstRowY - halfExtentY - 0.5;
+
+  const bars: ObstacleSpec[] = [];
+  letters.forEach((letter, index) => {
+    const originX = -halfSpan + index * pitch;
+
+    for (const [x1, y1, x2, y2] of LOGO_GLYPHS[letter]) {
+      const ax = originX + x1 * halfWidth;
+      const ay = y1 * halfHeight;
+      const bx = originX + x2 * halfWidth;
+      const by = y2 * halfHeight;
+      const midX = (ax + bx) / 2;
+      const midY = (ay + by) / 2;
+
+      bars.push({
+        kind: 'logoBar',
+        x: midX * cos + midY * sin,
+        y: centreY - midX * sin + midY * cos,
+        length: Math.hypot(bx - ax, by - ay) + LOGO.thickness,
+        angle: (Math.atan2(by - ay, bx - ax) * 180) / Math.PI - LOGO.tilt,
+        thickness: LOGO.thickness,
+      });
+    }
+  });
+
+  return { y: centreY, obstacles: bars };
 }
 
 /**
@@ -423,6 +571,9 @@ function buildRow(
       // Melt balls are a deliberate barrier placed by buildMeltWall, never a
       // randomly chosen row. Reaching here means the weight table was edited.
       throw new Error('meltBall is placed directly, not drawn as a random row');
+
+    case 'logoBar':
+      throw new Error('logoBar is placed directly, not drawn as a random row');
 
     default: {
       const exhaustive: never = kind;

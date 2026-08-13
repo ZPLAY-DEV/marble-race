@@ -12,6 +12,7 @@ import { createBumper, createBumperGlow } from './obstacles/Bumper';
 import { createDeflector } from './obstacles/Deflector';
 import { createFunnel } from './obstacles/Funnel';
 import { createLauncher } from './obstacles/Launcher';
+import { createLogoBar } from './obstacles/LogoBar';
 import { createMeltBall } from './obstacles/MeltBall';
 import { type Obstacle, type ObstacleContext, createStaticBox } from './obstacles/Obstacle';
 import { createRotor } from './obstacles/RotatingObstacle';
@@ -361,6 +362,8 @@ function buildObstacle(spec: ObstacleSpec, context: ObstacleContext): Obstacle {
       return createLauncher(spec, context);
     case 'meltBall':
       return createMeltBall(spec, context);
+    case 'logoBar':
+      return createLogoBar(spec, context);
     default: {
       const exhaustive: never = spec;
       throw new Error(`Unhandled obstacle spec: ${JSON.stringify(exhaustive)}`);

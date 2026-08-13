@@ -53,6 +53,11 @@ export const SCENE_COLORS = {
   // thing on the board, so they must be identifiable at a glance.
   launcher: '#a6ff00',
   meltBall: '#f2f6ff',
+  // The ZPLAY wordmark under the start gate. Deliberately the gate's own sky
+  // blue rather than a colour of its own, so the top of the board reads as one
+  // piece of branding instead of as another obstacle type to learn.
+  logo: '#e8f4ff',
+  logoEmissive: '#00d2ff',
   finishLine: '#ffffff',
   finishGlow: '#22ffa7',
 } as const;

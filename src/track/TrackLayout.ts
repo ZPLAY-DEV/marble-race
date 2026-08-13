@@ -17,7 +17,8 @@ export type ObstacleKind =
   | 'rotor'
   | 'deflector'
   | 'launcher'
-  | 'meltBall';
+  | 'meltBall'
+  | 'logoBar';
 
 interface ObstacleBase {
   kind: ObstacleKind;
@@ -130,6 +131,26 @@ export interface MeltBallSpec extends ObstacleBase {
   meltSeconds: number;
 }
 
+/**
+ * One stroke of the ZPLAY wordmark that stands where the opening bumper rows
+ * used to be. The letters are drawn, not modelled: every glyph is a handful of
+ * straight bars, which is all a wordmark on a pachinko board needs to be.
+ *
+ * It is a real barrier, not decoration. That puts two rules on the geometry,
+ * both enforced where the wordmark is laid out in TrackGenerator: no stroke may
+ * present a level face (the LEDGE_TILT rule from Walls.ts), and no counter
+ * inside a letter — the bowl of the P, the triangle of the A, the fork of the Y
+ * — may be wide enough for a marble to enter, because every one of those is a
+ * closed pocket a marble could never climb back out of.
+ */
+export interface LogoBarSpec extends ObstacleBase {
+  kind: 'logoBar';
+  length: number;
+  /** Rotation about the board normal, in degrees. */
+  angle: number;
+  thickness: number;
+}
+
 export type ObstacleSpec =
   | BumperSpec
   | SlantedWallSpec
@@ -140,7 +161,8 @@ export type ObstacleSpec =
   | RotorSpec
   | DeflectorSpec
   | LauncherSpec
-  | MeltBallSpec;
+  | MeltBallSpec
+  | LogoBarSpec;
 
 export interface TrackRow {
   /** Board-local Y of the row's centre line. */

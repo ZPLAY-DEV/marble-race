@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MIN_COLLIDER_THICKNESS } from '../src/physics/PhysicsConfig';
 import { RandomManager, STREAM } from '../src/random/RandomManager';
 import { DEFAULT_TRACK_CONFIG, rowCount } from '../src/track/TrackConfig';
 import { generateTrack } from '../src/track/TrackGenerator';
@@ -56,7 +57,7 @@ describe('generateTrack', () => {
     }
   });
 
-  it('opens with bumper fields so the starting grid is broken up', () => {
+  it('opens with the ZPLAY wordmark, which breaks up the starting grid', () => {
     // Edge-launcher rows interleave with the main sequence, so pick out the
     // main rows: the assertion is about what the field meets first, not about
     // list positions.
@@ -64,8 +65,7 @@ describe('generateTrack', () => {
       row.obstacles.some((o) => o.kind !== 'launcher'),
     );
 
-    expect(mainRows[0].obstacles.every((o) => o.kind === 'bumper')).toBe(true);
-    expect(mainRows[1].obstacles.every((o) => o.kind === 'bumper')).toBe(true);
+    expect(mainRows[0].obstacles.every((o) => o.kind === 'logoBar')).toBe(true);
   });
 
   it('never stacks two constricting rows in a row', () => {
@@ -102,6 +102,16 @@ describe('generateTrack', () => {
           return Math.abs(obstacle.x) + obstacle.width / 2;
         case 'rotor':
           return Math.abs(obstacle.x) + obstacle.length / 2;
+        case 'logoBar': {
+          // Exact half-extent along X of a rotated box, so the tilt on the
+          // wordmark can't quietly push a letter into a drain lane.
+          const radians = (obstacle.angle * Math.PI) / 180;
+          return (
+            Math.abs(obstacle.x) +
+            (obstacle.length / 2) * Math.abs(Math.cos(radians)) +
+            (obstacle.thickness / 2) * Math.abs(Math.sin(radians))
+          );
+        }
         // Funnels and narrow passages deliberately span the full width; both
         // slope inward and drain through their opening instead.
         default:
@@ -169,6 +179,7 @@ describe('generateTrack', () => {
       'deflector',
       'funnel',
       'launcher',
+      'logoBar',
       'meltBall',
       'narrowPassage',
       'rotor',
@@ -218,6 +229,65 @@ describe('generateTrack', () => {
           if (obstacle.kind !== 'bumper') continue;
           expect(Math.abs(obstacle.x) + obstacle.radius).toBeLessThanOrEqual(limit + 1e-6);
         }
+      }
+    });
+  });
+
+  describe('the ZPLAY wordmark', () => {
+    const logoBars = (seed: number) =>
+      allObstacles(build(seed)).filter((o) => o.kind === 'logoBar');
+
+    it('draws the same five letters in every race', () => {
+      // Z(3) + P(4) + L(2) + A(3) + Y(3) strokes, and identical whatever the
+      // seed — it is branding, not track.
+      const reference = logoBars(1);
+      expect(reference).toHaveLength(15);
+      for (const seed of [2, 99, 20260812]) {
+        expect(logoBars(seed)).toEqual(reference);
+      }
+    });
+
+    it('tilts every stroke clear of level', () => {
+      // A level face on an inclined board holds a marble permanently: the
+      // contact normal absorbs the whole down-board component of gravity. This
+      // is Walls.ts's LEDGE_TILT rule, applied to the wordmark by rotating the
+      // whole thing rather than by tilting strokes one at a time.
+      const ledgeTilt = 12;
+      for (const bar of logoBars(7)) {
+        if (bar.kind !== 'logoBar') continue;
+        // Fold to 0..90: a bar and the same bar turned 180 degrees are one shape.
+        const fromLevel = Math.abs(90 - Math.abs(((bar.angle % 180) + 180) % 180 - 90));
+        expect(fromLevel, `stroke at ${bar.angle.toFixed(1)} degrees is nearly level`)
+          .toBeGreaterThanOrEqual(ledgeTilt);
+      }
+    });
+
+    it('hangs entirely below the start gate and above the first obstacle row', () => {
+      // Overlapping either end would put a marble-high slot between the
+      // wordmark and its neighbour, which is the shape that traps whole groups.
+      const config = DEFAULT_TRACK_CONFIG;
+      const bars = logoBars(3);
+      const extent = (bar: (typeof bars)[number]) => {
+        if (bar.kind !== 'logoBar') return 0;
+        const radians = (bar.angle * Math.PI) / 180;
+        return (
+          (bar.length / 2) * Math.abs(Math.sin(radians)) +
+          (bar.thickness / 2) * Math.abs(Math.cos(radians))
+        );
+      };
+
+      const top = Math.max(...bars.map((bar) => bar.y + extent(bar)));
+      const bottom = Math.min(...bars.map((bar) => bar.y - extent(bar)));
+
+      expect(top).toBeLessThan(config.firstRowY);
+      // The first randomly generated row now sits two slots down.
+      expect(bottom).toBeGreaterThan(config.firstRowY - 2 * config.rowSpacing);
+    });
+
+    it('is thick enough that a marble cannot tunnel through a letter', () => {
+      for (const bar of logoBars(5)) {
+        if (bar.kind !== 'logoBar') continue;
+        expect(bar.thickness).toBeGreaterThanOrEqual(MIN_COLLIDER_THICKNESS);
       }
     });
   });
